@@ -1,0 +1,191 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: #f7f8fc;
+    color: #242424;
+    font-family: Arial, sans-serif;
+}
+
+.app {
+    min-height: 100vh;
+}
+
+.header {
+    text-align: center;
+    padding: 35px 20px;
+    background: white;
+    border-bottom: 1px solid #eeeeee;
+    h1 {
+        margin: 0;
+        font-size: 30px;
+    }
+    p {
+        color: #777;
+        margin-bottom: 0;
+    }
+}
+
+.container {
+    max-width: 850px;
+    margin: 35px auto;
+    padding: 0 20px;
+}
+
+.section {
+    margin-bottom: 35px;
+    h2 {
+        font-size: 21px;
+        margin-bottom: 16px;
+    }
+}
+
+.note-form,
+.note-card,
+.ai-section {
+    background: white;
+    padding: 22px;
+    border-radius: 10px;
+    border: 1px solid #eaeaea;
+}
+
+input,
+textarea {
+    width: 100%;
+    padding: 13px;
+    border: 1px solid #dddddd;
+    border-radius: 7px;
+    font: inherit;
+    outline: none;
+    margin-bottom: 13px;
+    &:focus {
+        border-color: #6558e8;
+    }
+}
+
+textarea {
+    resize: vertical;
+}
+
+button {
+    border: none;
+    padding: 11px 18px;
+    border-radius: 6px;
+    background: #5b50dc;
+    color: white;
+    cursor: pointer;
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+}
+
+.form-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.cancel-btn {
+    background: #777;
+}
+
+.notes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.note-card {
+    h3 {
+        margin: 0 0 12px;
+        font-size: 18px;
+    }
+    p {
+        color: #666;
+        line-height: 1.6;
+        white-space: pre-wrap;
+    }
+}
+
+.note-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 15px;
+    color: #888;
+    font-size: 13px;
+    div {
+        display: flex;
+        gap: 8px;
+    }
+    button {
+        padding: 8px 13px;
+    }
+}
+
+.edit-btn {
+    background: #e9e8ff;
+    color: #5146c9;
+}
+
+.delete-btn {
+    background: #ffe8e8;
+    color: #d33;
+}
+
+.empty {
+    color: #888;
+    text-align: center;
+    padding: 25px;
+}
+
+.ai-section {
+    margin-top: 40px;
+    border: 1px solid #dedbff;
+}
+
+.ai-description {
+    color: #777;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.ai-form {
+    display: flex;
+    gap: 10px;
+    input {
+        margin: 0;
+        flex: 1;
+    }
+    button {
+        white-space: nowrap;
+    }
+}
+
+.answer-box {
+    margin-top: 20px;
+    padding: 18px;
+    background: #f5f4ff;
+    border-radius: 8px;
+    border-left: 4px solid #6558e8;
+    h3 {
+        margin-top: 0;
+    }
+    p {
+        line-height: 1.7;
+        white-space: pre-wrap;
+    }
+}
+
+@media (max-width: 600px) {
+    .ai-form {
+        flex-direction: column;
+    }
+    .note-footer {
+        align-items: flex-start;
+        gap: 12px;
+        flex-direction: column;
+    }
+}

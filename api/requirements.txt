@@ -1,0 +1,17 @@
+
+fastapi
+uvicorn[standard]
+python-multipart
+pdfplumber
+langgraph
+langchain
+langchain-core
+langchain-community
+langchain-huggingface
+langchain-openai
+sentence-transformers
+faiss-cpu
+python-dotenv
+pydantic
+sqlalchemy
+psycopg2
