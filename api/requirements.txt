@@ -15,3 +15,7 @@ python-dotenv
 pydantic
 sqlalchemy
 psycopg2
+streamlit
+httpx
+beautifulsoup4
+langchain-groq

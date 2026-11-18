@@ -14,7 +14,6 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Fetch all notes from MongoDB
   const fetchNotes = async () => {
     try {
       const response = await fetch(`${API_URL}/notes`);
@@ -31,7 +30,6 @@ function App() {
     fetchNotes();
   }, []);
 
-  // Add or update a note
   const handleSave = async (e) => {
     e.preventDefault();
 
@@ -50,7 +48,10 @@ function App() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ title, content }),
+        body: JSON.stringify({
+          title: title,
+          description: content,
+        }),
       });
 
       if (!response.ok) throw new Error("Unable to save note");
@@ -67,7 +68,6 @@ function App() {
     }
   };
 
-  // Edit note
   const handleEdit = (note) => {
     setTitle(note.title);
     setContent(note.content);
@@ -76,7 +76,6 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Delete note
   const handleDelete = async (id) => {
     if (!window.confirm("Are you sure you want to delete this note?")) {
       return;
@@ -95,7 +94,6 @@ function App() {
     }
   };
 
-  // Ask AI using saved notes
   const handleAskAI = async (e) => {
     e.preventDefault();
 
@@ -105,12 +103,12 @@ function App() {
     setAnswer("");
 
     try {
-      const response = await fetch(`${API_URL}/ask`, {
+      const response = await fetch(`${API_URL}/askragai`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ qst: question }),
       });
 
       const data = await response.json();
@@ -134,7 +132,6 @@ function App() {
       </header>
 
       <main className="container">
-        {/* Add Note */}
         <section className="section">
           <h2>{editId ? "Update Note" : "Add a Note"}</h2>
 
@@ -175,7 +172,6 @@ function App() {
           </form>
         </section>
 
-        {/* Display Notes */}
         <section className="section">
           <h2>My Notes ({notes.length})</h2>
 
@@ -189,10 +185,6 @@ function App() {
                   <p>{note.content}</p>
 
                   <div className="note-footer">
-                    <span>
-                      {new Date(note.created_at).toLocaleDateString()}
-                    </span>
-
                     <div>
                       <button
                         className="edit-btn"
@@ -215,7 +207,6 @@ function App() {
           )}
         </section>
 
-        {/* Ask AI */}
         <section className="section ai-section">
           <h2>Ask AI from My Notes</h2>
 

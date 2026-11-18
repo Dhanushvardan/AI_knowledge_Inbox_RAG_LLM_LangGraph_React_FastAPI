@@ -1,20 +1,34 @@
 
+import os
+import re
+
+from dotenv import load_dotenv
+from typing import TypedDict
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from langgraph.graph import StateGraph
+from pydantic import BaseModel
+
+from sqlalchemy import (
+    create_engine,
+    Column,
+    Integer,
+    String,
+    Text
+)
+
+from sqlalchemy.orm import sessionmaker, declarative_base
+
+from langgraph.graph import StateGraph, END
+
 from langchain_core.documents import Document
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
 
-from sqlalchemy import create_engine, Column, Integer, String, Text
-from sqlalchemy.orm import sessionmaker, declarative_base
 
-from dotenv import load_dotenv
-from pydantic import BaseModel
-from typing import TypedDict
-import os
+from url_reader import extract_url_content
 
 
 
@@ -22,10 +36,20 @@ import os
 load_dotenv()
 
 database_url = os.getenv("database_url")
+groq_api_key = os.getenv("api_key") or os.getenv("GROQ_API_KEY")
+
+if not database_url:
+    raise ValueError("database_url is missing in .env")
+
+if not groq_api_key:
+    raise ValueError("Groq API key is missing in .env")
+
+
+
 
 engine = create_engine(
     database_url,
-    connect_args={"check_same_thread": False}
+    pool_pre_ping=True
 )
 
 sessionLocal = sessionmaker(
@@ -37,12 +61,28 @@ sessionLocal = sessionmaker(
 Base = declarative_base()
 
 
-class Note(Base):
-    __tablename__ = "notes"
 
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String(255), nullable=False)
-    description = Column(Text, nullable=False)
+
+class Note(Base):
+
+    __tablename__ = "noteDB"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+        autoincrement=True
+    )
+
+    title = Column(
+        String(255),
+        nullable=False
+    )
+
+    description = Column(
+        Text,
+        nullable=False
+    )
 
 
 Base.metadata.create_all(bind=engine)
@@ -57,7 +97,6 @@ class NoteRequest(BaseModel):
 
 class qst(BaseModel):
     qst: str
-
 
 
 
@@ -78,10 +117,25 @@ embeddings = HuggingFaceEmbeddings(
 
 
 llm = ChatOpenAI(
-    model="llama-3.3-70b-versatile",
+    model="openai/gpt-oss-20b",
     base_url="https://api.groq.com/openai/v1",
-    api_key=os.getenv("GROQ_API_KEY")
+    api_key=groq_api_key,
+    temperature=0
 )
+
+
+
+def find_urls(text: str):
+
+    urls = re.findall(
+        r'https?://[^\s<>"\']+',
+        text
+    )
+
+    return list(dict.fromkeys(
+        url.rstrip(".,;!?)\"]}")
+        for url in urls
+    ))
 
 
 
@@ -91,9 +145,11 @@ def ragNode(state: state):
     db = sessionLocal()
 
     try:
+
         notes = db.query(Note).all()
 
         if not notes:
+
             return {
                 "txt": "",
                 "ct": "",
@@ -102,8 +158,14 @@ def ragNode(state: state):
 
         docs = [
             Document(
-                page_content=f"Title: {note.title}\nDescription: {note.description}",
-                metadata={"id": note.id}
+                page_content=(
+                    f"Title: {note.title}\n"
+                    f"Description: {note.description}"
+                ),
+                metadata={
+                    "id": note.id,
+                    "title": note.title
+                }
             )
             for note in notes
         ]
@@ -111,19 +173,21 @@ def ragNode(state: state):
     finally:
         db.close()
 
+    
     vectorstore = FAISS.from_documents(
         docs,
         embeddings
     )
 
+    
     retriever = vectorstore.as_retriever(
-        search_kwargs={"k": 3}
+        search_kwargs={"k": min(3, len(docs))}
     )
 
     relevant_docs = retriever.invoke(state["qs"])
 
-    ct = "\n".join(
-        [d.page_content for d in relevant_docs]
+    ct = "\n\n".join(
+        [doc.page_content for doc in relevant_docs]
     )
 
     return {
@@ -141,52 +205,77 @@ def llmNode(state: state):
     qs = state["qs"]
 
     if not ct:
+
         return {
             "ot": "No notes found. Please create notes first."
         }
 
     prompt = f"""
-    Answer the question using the following notes.
 
-    Context:
-    {ct}
 
-    Question:
-    {qs}
+Answer the user's question using the retrieved notes
+and extracted webpage content.
 
-    
 
-    Give a clear answer.
-    """
 
-    res = llm.invoke(prompt)
+CONTEXT:
+
+{ct}
+
+USER QUESTION:
+
+{qs}
+
+ANSWER:
+"""
+
+    response = llm.invoke(prompt)
 
     return {
-        "ot": res.content
+        "ot": response.content
     }
-
 
 
 
 graph = StateGraph(state)
 
-graph.add_node("ragNode", ragNode)
-graph.add_node("llmNode", llmNode)
+graph.add_node(
+    "ragNode",
+    ragNode
+)
+
+graph.add_node(
+    "llmNode",
+    llmNode
+)
 
 graph.set_entry_point("ragNode")
 
-graph.add_edge("ragNode", "llmNode")
+graph.add_edge(
+    "ragNode",
+    "llmNode"
+)
+
+graph.add_edge(
+    "llmNode",
+    END
+)
 
 app_graph = graph.compile()
 
 
 
 
-app = FastAPI()
+app = FastAPI(
+    title="AI Notes Application"
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000"
+        
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True
@@ -196,14 +285,73 @@ app.add_middleware(
 
 
 @app.post("/notes")
-def create_note(req: NoteRequest):
+async def create_note(req: NoteRequest):
+
+    title = req.title.strip()
+    description = req.description.strip()
+
+    if not title:
+        raise HTTPException(
+            status_code=400,
+            detail="Title cannot be empty"
+        )
+
+    if not description:
+        raise HTTPException(
+            status_code=400,
+            detail="Description cannot be empty"
+        )
+
+    
+    urls = find_urls(description)
+
+    extracted_content = []
+
+    
+    for url in urls:
+
+        result = await extract_url_content(url)
+
+        if result.get("success"):
+
+            extracted_content.append(
+                f"""
+--- EXTRACTED WEBPAGE CONTENT ---
+
+Website Title:
+{result.get('title', 'No title')}
+
+Website URL:
+{result.get('url', url)}
+
+Description:
+{result.get('content', '')}
+
+--- END OF WEBPAGE CONTENT ---
+"""
+            )
+
+        else:
+
+            print(
+                f"URL extraction failed: {url} - "
+                f"{result.get('error', 'Unknown error')}"
+            )
+
+    
+    if extracted_content:
+
+        description += "\n\n" + "\n\n".join(
+            extracted_content
+        )
 
     db = sessionLocal()
 
     try:
+
         new_note = Note(
-            title=req.title,
-            description=req.description
+            title=title,
+            description=description
         )
 
         db.add(new_note)
@@ -215,6 +363,15 @@ def create_note(req: NoteRequest):
             "title": new_note.title,
             "description": new_note.description
         }
+
+    except Exception as e:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Note creation failed: {str(e)}"
+        )
 
     finally:
         db.close()
@@ -228,7 +385,10 @@ def get_notes():
     db = sessionLocal()
 
     try:
-        notes = db.query(Note).all()
+
+        notes = db.query(Note).order_by(
+            Note.id.desc()
+        ).all()
 
         return [
             {
@@ -245,17 +405,96 @@ def get_notes():
 
 
 
+@app.get("/notes/{note_id}")
+def get_note(note_id: int):
+
+    db = sessionLocal()
+
+    try:
+
+        note = db.query(Note).filter(
+            Note.id == note_id
+        ).first()
+
+        if not note:
+
+            raise HTTPException(
+                status_code=404,
+                detail="Note not found"
+            )
+
+        return {
+            "id": note.id,
+            "title": note.title,
+            "description": note.description
+        }
+
+    finally:
+        db.close()
+
+
+
+
+@app.put("/notes/{note_id}")
+def update_note(
+    note_id: int,
+    req: NoteRequest
+):
+
+    db = sessionLocal()
+
+    try:
+
+        note = db.query(Note).filter(
+            Note.id == note_id
+        ).first()
+
+        if not note:
+
+            raise HTTPException(
+                status_code=404,
+                detail="Note not found"
+            )
+
+        if not req.title.strip() or not req.description.strip():
+
+            raise HTTPException(
+                status_code=400,
+                detail="Title and description cannot be empty"
+            )
+
+        note.title = req.title.strip()
+        note.description = req.description.strip()
+
+        db.commit()
+        db.refresh(note)
+
+        return {
+            "message": "Note updated successfully",
+            "id": note.id,
+            "title": note.title,
+            "description": note.description
+        }
+
+    finally:
+        db.close()
+
+
+
+
 @app.delete("/notes/{note_id}")
 def delete_note(note_id: int):
 
     db = sessionLocal()
 
     try:
+
         note = db.query(Note).filter(
             Note.id == note_id
         ).first()
 
         if not note:
+
             raise HTTPException(
                 status_code=404,
                 detail="Note not found"
@@ -277,14 +516,40 @@ def delete_note(note_id: int):
 @app.post("/askragai")
 def askragAi(req: qst):
 
-    res = app_graph.invoke({
-        "qs": req.qst,
-        "txt": "",
-        "ct": "",
-        "ot": ""
-    })
+    if not req.qst.strip():
+
+        raise HTTPException(
+            status_code=400,
+            detail="Question cannot be empty"
+        )
+
+    try:
+
+        res = app_graph.invoke({
+            "qs": req.qst,
+            "txt": "",
+            "ct": "",
+            "ot": ""
+        })
+
+        return {
+            "question": req.qst,
+            "answer": res["ot"]
+        }
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI processing failed: {str(e)}"
+        )
+
+
+
+
+@app.get("/")
+def home():
 
     return {
-        "question": req.qst,
-        "answer": res["ot"]
+        "message": "AI Notes API is running"
     }
